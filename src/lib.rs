@@ -1,14 +1,11 @@
 use std::io::prelude::*;
 use std::io::BufReader;
 use std::str;
-use byteorder::ReadBytesExt;
+use byteorder::{LittleEndian, BigEndian, ReadBytesExt};
 
-type SidFileOrder = byteorder::BigEndian;
-
-type BYTE = u8;
-type WORD = u16;
-type LONGWORD = u32;
-type STRING = String;
+type Byte = u8;
+type Word = u16;
+type LongWord = u32;
 
 #[derive(Debug)]
 pub enum SidFileType {
@@ -71,23 +68,23 @@ pub struct SidFileFlags {
 pub struct SidFile {
     pub file_type: SidFileType,
     pub version: SidFileVersion,
-    pub data_offset: WORD,  // +06    WORD dataOffset
-    pub load_address: WORD, // +08    WORD loadAddress
-    pub init_address: WORD, // +0A    WORD initAddress
-    pub play_address: WORD, // +0C    WORD playAddress
-    pub songs: WORD,        // +0E    WORD songs
-    pub start_song: WORD,   // +10    WORD startSong
-    pub speed: LONGWORD,    // +12    LONGWORD speed
-    pub name: STRING,       // +16    STRING name
-    pub author: STRING,     // +36    STRING author
-    pub released: STRING,   // +56    STRING released
-    pub flags: Option<SidFileFlags>,      // +76    WORD flags
-    pub start_page: Option<BYTE>,         // +78    BYTE start_page
-    pub page_length: Option<BYTE>,        // +79    BYTE page_length
-    pub second_sid_address: Option<BYTE>, // +7A    BYTE second_SID_address
-    pub third_sid_address: Option<BYTE>,  // +7C    BYTE third_SID_address
-    pub real_load_address: WORD,
-    pub data: Vec<BYTE>,
+    pub data_offset: Word,  // +06    Word dataOffset
+    pub load_address: Word, // +08    Word loadAddress
+    pub init_address: Word, // +0A    Word initAddress
+    pub play_address: Word, // +0C    Word playAddress
+    pub songs: Word,        // +0E    Word songs
+    pub start_song: Word,   // +10    Word startSong
+    pub speed: LongWord,    // +12    LongWord speed
+    pub name: String,       // +16    String name
+    pub author: String,     // +36    String author
+    pub released: String,   // +56    String released
+    pub flags: Option<SidFileFlags>,      // +76    Word flags
+    pub start_page: Option<Byte>,         // +78    Byte start_page
+    pub page_length: Option<Byte>,        // +79    Byte page_length
+    pub second_sid_address: Option<Byte>, // +7A    Byte second_SID_address
+    pub third_sid_address: Option<Byte>,  // +7C    Byte third_SID_address
+    pub real_load_address: Word,
+    pub data: Vec<Byte>,
 }
 
 impl SidFile {
@@ -171,7 +168,7 @@ impl SidFile {
     }
 
     fn get_file_type(reader: &mut BufReader<&[u8]>) -> Result<SidFileType, std::io::Error> {
-        let file_type = reader.read_u32::<SidFileOrder>()?;
+        let file_type = reader.read_u32::<BigEndian>()?;
         match file_type {
             0x52534944 => Ok(SidFileType::RSID),
             0x50534944 => Ok(SidFileType::PSID),
@@ -186,7 +183,7 @@ impl SidFile {
         reader: &mut BufReader<&[u8]>,
         header: &SidFileType,
     ) -> Result<SidFileVersion, std::io::Error> {
-        let version = reader.read_u16::<SidFileOrder>()?;
+        let version = reader.read_u16::<BigEndian>()?;
         match (header, version) {
             (_, 0x01) => Ok(SidFileVersion::V1),
             (SidFileType::PSID | SidFileType::RSID, 0x02) => Ok(SidFileVersion::V2),
@@ -203,7 +200,7 @@ impl SidFile {
         reader: &mut BufReader<&[u8]>,
         version: &SidFileVersion,
     ) -> Result<u16, std::io::Error> {
-        let data_offset = reader.read_u16::<SidFileOrder>()?;
+        let data_offset = reader.read_u16::<BigEndian>()?;
 
         match (version, data_offset) {
             (SidFileVersion::V1, 0x76) => Ok(0x76),
@@ -221,7 +218,7 @@ impl SidFile {
         reader: &mut BufReader<&[u8]>,
         header: &SidFileType,
     ) -> Result<u16, std::io::Error> {
-        let load_address = reader.read_u16::<SidFileOrder>()?;
+        let load_address = reader.read_u16::<BigEndian>()?;
 
         match (header, load_address) {
             (SidFileType::PSID, _) => Ok(load_address),
@@ -237,7 +234,7 @@ impl SidFile {
     fn get_real_load_address(
         reader: &mut BufReader<&[u8]>
     ) -> Result<u16, std::io::Error> {
-        let load_address: u16 = reader.read_u16::<SidFileOrder>()? as u16;
+        let load_address: u16 = reader.read_u16::<LittleEndian>()?;
         Ok(load_address)
     }
 
@@ -246,7 +243,7 @@ impl SidFile {
         reader: &mut BufReader<&[u8]>,
         header: &SidFileType,
     ) -> Result<u16, std::io::Error> {
-        let play_address = reader.read_u16::<SidFileOrder>()?;
+        let play_address = reader.read_u16::<BigEndian>()?;
 
         match (header, play_address) {
             (SidFileType::RSID, 0x0000) => Ok(play_address),
@@ -262,7 +259,7 @@ impl SidFile {
         reader: &mut BufReader<&[u8]>,
         header: &SidFileType,
     ) -> Result<u16, std::io::Error> {
-        let init_address = reader.read_u16::<SidFileOrder>()?;
+        let init_address = reader.read_u16::<BigEndian>()?;
 
         match (header, init_address) {
             (SidFileType::RSID, 0x07E8..=0x9FFF) => Ok(init_address),
@@ -276,7 +273,7 @@ impl SidFile {
     }
 
     fn get_songs(reader: &mut BufReader<&[u8]>) -> Result<u16, std::io::Error> {
-        let songs = reader.read_u16::<SidFileOrder>()?;
+        let songs = reader.read_u16::<BigEndian>()?;
         match songs {
             0x0001..=0x0100 => Ok(songs),
             _ => Err(std::io::Error::new(
@@ -287,7 +284,7 @@ impl SidFile {
     }
 
     fn get_start_song(reader: &mut BufReader<&[u8]>, songs: u16) -> Result<u16, std::io::Error> {
-        let start_song = reader.read_u16::<SidFileOrder>()?;
+        let start_song = reader.read_u16::<BigEndian>()?;
         if start_song <= songs {
             Ok(start_song)
         } else {
@@ -302,7 +299,7 @@ impl SidFile {
         reader: &mut BufReader<&[u8]>,
         header: &SidFileType,
     ) -> Result<u32, std::io::Error> {
-        let speed = reader.read_u32::<SidFileOrder>()?;
+        let speed = reader.read_u32::<BigEndian>()?;
         match (header, speed) {
             (SidFileType::RSID, 0x00000000) => Ok(speed),
             (SidFileType::PSID, _) => Ok(speed),
@@ -344,7 +341,7 @@ impl SidFile {
     }
 
     fn get_flags(reader: &mut BufReader<&[u8]>) -> Result<SidFileFlags, std::io::Error> {
-        let flags = reader.read_u16::<SidFileOrder>()?;
+        let flags = reader.read_u16::<BigEndian>()?;
         let mut bits: Vec<bool> = vec![false];
         for n in 0..16 {
             bits.push(((flags >> n) & 1) == 1);
