@@ -86,6 +86,7 @@ pub struct SidFile {
     pub page_length: Option<BYTE>,        // +79    BYTE page_length
     pub second_sid_address: Option<BYTE>, // +7A    BYTE second_SID_address
     pub third_sid_address: Option<BYTE>,  // +7C    BYTE third_SID_address
+    pub real_load_address: WORD,
     pub data: Vec<BYTE>,
 }
 
@@ -96,7 +97,7 @@ impl SidFile {
         let file_type = Self::get_file_type(&mut reader)?;
         let version = Self::get_version(&mut reader, &file_type)?;
         let data_offset = Self::get_data_offset(&mut reader, &version)?;
-        let _not_load_address = Self::get_load_address(&mut reader, &file_type)?;
+        let load_address = Self::get_load_address(&mut reader, &file_type)?;
         let init_address = Self::get_init_address(&mut reader, &file_type)?;
         let play_address = Self::get_play_address(&mut reader, &file_type)?;
         let songs = Self::get_songs(&mut reader)?;
@@ -108,7 +109,7 @@ impl SidFile {
 
         match version {
             SidFileVersion::V1 => {
-                let load_address = Self::get_real_load_address(&mut reader)?;
+                let real_load_address = Self::get_real_load_address(&mut reader)?;
                 let data = Self::get_data(&mut reader)?;
 
                 Ok(SidFile {
@@ -124,6 +125,7 @@ impl SidFile {
                     name,
                     author,
                     released,
+                    real_load_address,
                     data,
                     flags: None,
                     start_page: None,
@@ -140,7 +142,7 @@ impl SidFile {
                 let second_sid_address = Self::get_sid_address(&mut reader)?;
                 let third_sid_address = Self::get_sid_address(&mut reader)?;
                 
-                let load_address = Self::get_real_load_address(&mut reader)?;
+                let real_load_address = Self::get_real_load_address(&mut reader)?;
                 let data = Self::get_data(&mut reader)?;
                 
                 Ok(Self {
@@ -156,6 +158,7 @@ impl SidFile {
                     name,
                     author,
                     released,
+                    real_load_address,
                     flags: Some(flags),
                     start_page: Some(start_page),
                     page_length: Some(page_length),
@@ -234,8 +237,7 @@ impl SidFile {
     fn get_real_load_address(
         reader: &mut BufReader<&[u8]>
     ) -> Result<u16, std::io::Error> {
-        let mut load_address: u16 = reader.read_u8()? as u16;
-        load_address |= (reader.read_u8()? as u16) << 8;
+        let load_address: u16 = reader.read_u16::<SidFileOrder>()? as u16;
         Ok(load_address)
     }
 
