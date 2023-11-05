@@ -1,0 +1,429 @@
+use std::io::prelude::*;
+use std::io::BufReader;
+use std::str;
+use byteorder::ReadBytesExt;
+
+type SidFileOrder = byteorder::BigEndian;
+
+type BYTE = u8;
+type WORD = u16;
+type LONGWORD = u32;
+type STRING = String;
+
+#[derive(Debug)]
+pub enum SidFileType {
+    RSID,
+    PSID,
+    Unknown,
+}
+
+#[derive(Debug)]
+pub enum SidFileVersion {
+    V1,
+    V2,
+    V3,
+    V4,
+}
+
+#[derive(Debug)]
+pub struct SidFileHeader {
+}
+
+#[derive(Debug)]
+pub enum SidFileFormat {
+    InternalPlayer,
+    MusData,
+}
+
+#[derive(Debug)]
+pub enum SidFilePlaySID {
+    C64,
+    PlaySID,
+}
+
+#[derive(Debug)]
+pub enum SidFileFlagClock {
+    Unknown,
+    PAL,
+    NTSC,
+    Both,
+}
+
+#[derive(Debug)]
+pub enum SidFileFlagSidModel {
+    Unknown,
+    MOS6581,
+    MOS8580,
+    Both,
+}
+
+#[derive(Debug)]
+pub struct SidFileFlags {
+    pub format: SidFileFormat,
+    pub play_sid: SidFilePlaySID,
+    pub clock: SidFileFlagClock,
+    pub sid_model: SidFileFlagSidModel,
+    pub second_sid_model: SidFileFlagSidModel,
+    pub third_sid_model: SidFileFlagSidModel,
+}
+
+#[derive(Debug)]
+pub struct SidFile {
+    pub file_type: SidFileType,
+    pub version: SidFileVersion,
+    pub data_offset: WORD,  // +06    WORD dataOffset
+    pub load_address: WORD, // +08    WORD loadAddress
+    pub init_address: WORD, // +0A    WORD initAddress
+    pub play_address: WORD, // +0C    WORD playAddress
+    pub songs: WORD,        // +0E    WORD songs
+    pub start_song: WORD,   // +10    WORD startSong
+    pub speed: LONGWORD,    // +12    LONGWORD speed
+    pub name: STRING,       // +16    STRING name
+    pub author: STRING,     // +36    STRING author
+    pub released: STRING,   // +56    STRING released
+    pub flags: Option<SidFileFlags>,      // +76    WORD flags
+    pub start_page: Option<BYTE>,         // +78    BYTE start_page
+    pub page_length: Option<BYTE>,        // +79    BYTE page_length
+    pub second_sid_address: Option<BYTE>, // +7A    BYTE second_SID_address
+    pub third_sid_address: Option<BYTE>,  // +7C    BYTE third_SID_address
+    pub data: Vec<BYTE>,
+}
+
+impl SidFile {
+    pub fn parse(data: &[u8]) -> Result<SidFile, std::io::Error> {
+        let mut reader = BufReader::new(data);
+
+        let file_type = Self::get_file_type(&mut reader)?;
+        let version = Self::get_version(&mut reader, &file_type)?;
+        let data_offset = Self::get_data_offset(&mut reader, &version)?;
+        let _not_load_address = Self::get_load_address(&mut reader, &file_type)?;
+        let init_address = Self::get_init_address(&mut reader, &file_type)?;
+        let play_address = Self::get_play_address(&mut reader, &file_type)?;
+        let songs = Self::get_songs(&mut reader)?;
+        let start_song = Self::get_start_song(&mut reader, songs)?;
+        let speed = Self::get_speed(&mut reader, &file_type)?;
+        let name = Self::get_name(&mut reader)?;
+        let author = Self::get_author(&mut reader)?;
+        let released = Self::get_released(&mut reader)?;
+
+        match version {
+            SidFileVersion::V1 => {
+                let load_address = Self::get_real_load_address(&mut reader)?;
+                let data = Self::get_data(&mut reader)?;
+
+                Ok(SidFile {
+                    file_type,
+                    version,
+                    data_offset,
+                    load_address,
+                    init_address,
+                    play_address,
+                    songs,
+                    start_song,
+                    speed,
+                    name,
+                    author,
+                    released,
+                    data,
+                    flags: None,
+                    start_page: None,
+                    page_length: None,
+                    second_sid_address: None,
+                    third_sid_address: None,
+                })
+            }
+            _ => {
+                // fill additional header
+                let flags = Self::get_flags(&mut reader)?;
+                let start_page = Self::get_start_page(&mut reader)?;
+                let page_length = Self::get_page_length(&mut reader)?;
+                let second_sid_address = Self::get_sid_address(&mut reader)?;
+                let third_sid_address = Self::get_sid_address(&mut reader)?;
+                
+                let load_address = Self::get_real_load_address(&mut reader)?;
+                let data = Self::get_data(&mut reader)?;
+                
+                Ok(Self {
+                    file_type,
+                    version,
+                    data_offset,
+                    load_address,
+                    init_address,
+                    play_address,
+                    songs,
+                    start_song,
+                    speed,
+                    name,
+                    author,
+                    released,
+                    flags: Some(flags),
+                    start_page: Some(start_page),
+                    page_length: Some(page_length),
+                    second_sid_address: Some(second_sid_address),
+                    third_sid_address: Some(third_sid_address),
+                    data,
+                })
+            }
+        }
+    }
+
+    fn get_file_type(reader: &mut BufReader<&[u8]>) -> Result<SidFileType, std::io::Error> {
+        let file_type = reader.read_u32::<SidFileOrder>()?;
+        match file_type {
+            0x52534944 => Ok(SidFileType::RSID),
+            0x50534944 => Ok(SidFileType::PSID),
+            _ => Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Invalid file_type",
+            )),
+        }
+    }
+
+    fn get_version(
+        reader: &mut BufReader<&[u8]>,
+        header: &SidFileType,
+    ) -> Result<SidFileVersion, std::io::Error> {
+        let version = reader.read_u16::<SidFileOrder>()?;
+        match (header, version) {
+            (_, 0x01) => Ok(SidFileVersion::V1),
+            (SidFileType::PSID | SidFileType::RSID, 0x02) => Ok(SidFileVersion::V2),
+            (SidFileType::PSID | SidFileType::RSID, 0x03) => Ok(SidFileVersion::V3),
+            (SidFileType::PSID | SidFileType::RSID, 0x04) => Ok(SidFileVersion::V4),
+            _ => Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Invalid version",
+            )),
+        }
+    }
+
+    fn get_data_offset(
+        reader: &mut BufReader<&[u8]>,
+        version: &SidFileVersion,
+    ) -> Result<u16, std::io::Error> {
+        let data_offset = reader.read_u16::<SidFileOrder>()?;
+
+        match (version, data_offset) {
+            (SidFileVersion::V1, 0x76) => Ok(0x76),
+            (SidFileVersion::V2, 0x7C) => Ok(0x7C),
+            (SidFileVersion::V3, 0x7C) => Ok(0x7C),
+            (SidFileVersion::V4, 0x7C) => Ok(0x7C),
+            _ => Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Invalid data offset",
+            )),
+        }
+    }
+
+    fn get_load_address(
+        reader: &mut BufReader<&[u8]>,
+        header: &SidFileType,
+    ) -> Result<u16, std::io::Error> {
+        let load_address = reader.read_u16::<SidFileOrder>()?;
+
+        match (header, load_address) {
+            (SidFileType::PSID, _) => Ok(load_address),
+            (SidFileType::RSID, 0x07E8..=0xFFFF) => Ok(load_address),
+            _ => Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Invalid load address",
+            )),
+        }
+    }
+
+    // but why?
+    fn get_real_load_address(
+        reader: &mut BufReader<&[u8]>
+    ) -> Result<u16, std::io::Error> {
+        let mut load_address: u16 = reader.read_u8()? as u16;
+        load_address |= (reader.read_u8()? as u16) << 8;
+        Ok(load_address)
+    }
+
+
+    fn get_play_address(
+        reader: &mut BufReader<&[u8]>,
+        header: &SidFileType,
+    ) -> Result<u16, std::io::Error> {
+        let play_address = reader.read_u16::<SidFileOrder>()?;
+
+        match (header, play_address) {
+            (SidFileType::RSID, 0x0000) => Ok(play_address),
+            (SidFileType::PSID, 0x0000..=0xFFFF) => Ok(play_address),
+            _ => Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Invalid play address",
+            )),
+        }
+    }
+
+    fn get_init_address(
+        reader: &mut BufReader<&[u8]>,
+        header: &SidFileType,
+    ) -> Result<u16, std::io::Error> {
+        let init_address = reader.read_u16::<SidFileOrder>()?;
+
+        match (header, init_address) {
+            (SidFileType::RSID, 0x07E8..=0x9FFF) => Ok(init_address),
+            (SidFileType::RSID, 0xC000..=0xCFFF) => Ok(init_address),
+            (SidFileType::PSID, 0x0000..=0xFFFF) => Ok(init_address),
+            _ => Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Invalid init address",
+            )),
+        }
+    }
+
+    fn get_songs(reader: &mut BufReader<&[u8]>) -> Result<u16, std::io::Error> {
+        let songs = reader.read_u16::<SidFileOrder>()?;
+        match songs {
+            0x0001..=0x0100 => Ok(songs),
+            _ => Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Invalid number of songs",
+            )),
+        }
+    }
+
+    fn get_start_song(reader: &mut BufReader<&[u8]>, songs: u16) -> Result<u16, std::io::Error> {
+        let start_song = reader.read_u16::<SidFileOrder>()?;
+        if start_song <= songs {
+            Ok(start_song)
+        } else {
+            Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Invalid start song",
+            ))
+        }
+    }
+
+    fn get_speed(
+        reader: &mut BufReader<&[u8]>,
+        header: &SidFileType,
+    ) -> Result<u32, std::io::Error> {
+        let speed = reader.read_u32::<SidFileOrder>()?;
+        match (header, speed) {
+            (SidFileType::RSID, 0x00000000) => Ok(speed),
+            (SidFileType::PSID, _) => Ok(speed),
+            _ => Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Invalid speed",
+            )),
+        }
+    }
+
+    fn get_name(reader: &mut BufReader<&[u8]>) -> Result<String, std::io::Error> {
+        let mut name = [0u8; 32];
+        reader.read_exact(&mut name)?;
+        Ok(str::from_utf8(&name)
+            .unwrap()
+            .to_string()
+            .trim_matches(char::from(0))
+            .to_string())
+    }
+
+    fn get_author(reader: &mut BufReader<&[u8]>) -> Result<String, std::io::Error> {
+        let mut author = [0u8; 32];
+        reader.read_exact(&mut author)?;
+        Ok(str::from_utf8(&author)
+            .unwrap()
+            .to_string()
+            .trim_matches(char::from(0))
+            .to_string())
+    }
+
+    fn get_released(reader: &mut BufReader<&[u8]>) -> Result<String, std::io::Error> {
+        let mut released = [0u8; 32];
+        reader.read_exact(&mut released)?;
+        Ok(str::from_utf8(&released)
+            .unwrap()
+            .to_string()
+            .trim_matches(char::from(0))
+            .to_string())
+    }
+
+    fn get_flags(reader: &mut BufReader<&[u8]>) -> Result<SidFileFlags, std::io::Error> {
+        let flags = reader.read_u16::<SidFileOrder>()?;
+        let mut bits: Vec<bool> = vec![false];
+        for n in 0..16 {
+            bits.push(((flags >> n) & 1) == 1);
+        }
+        let format = match bits[0] {
+            false => SidFileFormat::InternalPlayer,
+            true => SidFileFormat::MusData,
+        };
+
+        let play_sid = match bits[1] {
+            false => SidFilePlaySID::C64,
+            true => SidFilePlaySID::PlaySID,
+        };
+
+        let clock = match (bits[2], bits[3]) {
+            (false, false) => SidFileFlagClock::Unknown,
+            (false, true) => SidFileFlagClock::PAL,
+            (true, false) => SidFileFlagClock::NTSC,
+            (true, true) => SidFileFlagClock::Both,
+        };
+
+        let sid_model = Self::get_sid_model(bits[4], bits[5]);
+        let second_sid_model = Self::get_sid_model(bits[6], bits[7]);
+        let third_sid_model = Self::get_sid_model(bits[8], bits[9]);
+
+        if bits[10..16].iter().any(|&x| x) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Invalid flags",
+            ));
+        };
+
+        Ok(SidFileFlags {
+            format,
+            play_sid,
+            clock,
+            sid_model,
+            second_sid_model,
+            third_sid_model,
+        })
+    }
+
+    fn get_sid_model(bit0: bool, bit1: bool) -> SidFileFlagSidModel {
+        match (bit0, bit1) {
+            (false, false) => SidFileFlagSidModel::Unknown,
+            (false, true) => SidFileFlagSidModel::MOS6581,
+            (true, false) => SidFileFlagSidModel::MOS8580,
+            (true, true) => SidFileFlagSidModel::Both,
+        }
+    }
+
+    fn get_start_page(reader: &mut BufReader<&[u8]>) -> Result<u8, std::io::Error> {
+        let start_page = reader.read_u8()?;
+        match start_page {
+            0x00..=0x3F => Ok(start_page),
+            _ => Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Invalid start page",
+            )),
+        }
+    }
+
+    fn get_page_length(reader: &mut BufReader<&[u8]>) -> Result<u8, std::io::Error> {
+        let page_length = reader.read_u8()?;
+        match page_length {
+            0x00..=0x3F => Ok(page_length),
+            _ => Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Invalid page length",
+            )),
+        }
+    }
+
+    fn get_sid_address(reader: &mut BufReader<&[u8]>) -> Result<u8, std::io::Error> {
+        let sid_address = reader.read_u8()?;
+        Ok(sid_address)
+    }
+
+    fn get_data(reader: &mut BufReader<&[u8]>) -> Result<Vec<u8>, std::io::Error> {
+        let mut data = vec![];
+        _ = reader.read_to_end(&mut data);
+        Ok(data)
+    }
+}
