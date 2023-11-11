@@ -89,7 +89,7 @@ impl SidFile {
         let file_type = Self::get_file_type(&mut reader)?;
         let version = Self::get_version(&mut reader, &file_type)?;
         let data_offset = Self::get_data_offset(&mut reader, &version)?;
-        let load_address = Self::get_load_address(&mut reader, &file_type)?;
+        let load_address = Self::get_load_address(&mut reader)?;
         let init_address = Self::get_init_address(&mut reader, &file_type)?;
         let play_address = Self::get_play_address(&mut reader, &file_type)?;
         let songs = Self::get_songs(&mut reader)?;
@@ -127,7 +127,7 @@ impl SidFile {
                 })
             }
             _ => {
-                // fill additional header
+                // fill additional file_type
                 let flags = Self::get_flags(&mut reader)?;
                 let start_page = Self::get_start_page(&mut reader)?;
                 let page_length = Self::get_page_length(&mut reader)?;
@@ -176,10 +176,10 @@ impl SidFile {
 
     fn get_version(
         reader: &mut BufReader<&[u8]>,
-        header: &Type,
+        file_type: &Type,
     ) -> Result<Version, std::io::Error> {
         let version = reader.read_u16::<BigEndian>()?;
-        match (header, version) {
+        match (file_type, version) {
             (_, 0x01) => Ok(Version::V1),
             (Type::PSID | Type::RSID, 0x02) => Ok(Version::V2),
             (Type::PSID | Type::RSID, 0x03) => Ok(Version::V3),
@@ -210,19 +210,10 @@ impl SidFile {
     }
 
     fn get_load_address(
-        reader: &mut BufReader<&[u8]>,
-        header: &Type,
+        reader: &mut BufReader<&[u8]>
     ) -> Result<u16, std::io::Error> {
         let load_address = reader.read_u16::<BigEndian>()?;
-
-        match (header, load_address) {
-            (Type::PSID, _) => Ok(load_address),
-            (Type::RSID, 0xE807..=0xFFFF) => Ok(load_address),
-            _ => Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "Invalid load address",
-            )),
-        }
+        Ok(load_address)
     }
 
     // but why?
@@ -233,11 +224,11 @@ impl SidFile {
 
     fn get_play_address(
         reader: &mut BufReader<&[u8]>,
-        header: &Type,
+        file_type: &Type,
     ) -> Result<u16, std::io::Error> {
         let play_address = reader.read_u16::<BigEndian>()?;
 
-        match (header, play_address) {
+        match (file_type, play_address) {
             (Type::RSID, 0x0000) => Ok(play_address),
             (Type::PSID, 0x0000..=0xFFFF) => Ok(play_address),
             _ => Err(std::io::Error::new(
@@ -249,11 +240,11 @@ impl SidFile {
 
     fn get_init_address(
         reader: &mut BufReader<&[u8]>,
-        header: &Type,
+        file_type: &Type,
     ) -> Result<u16, std::io::Error> {
         let init_address = reader.read_u16::<BigEndian>()?;
 
-        match (header, init_address) {
+        match (file_type, init_address) {
             (Type::RSID, 0x07E8..=0x9FFF) => Ok(init_address),
             (Type::RSID, 0xC000..=0xCFFF) => Ok(init_address),
             (Type::PSID, 0x0000..=0xFFFF) => Ok(init_address),
@@ -287,9 +278,9 @@ impl SidFile {
         }
     }
 
-    fn get_speed(reader: &mut BufReader<&[u8]>, header: &Type) -> Result<u32, std::io::Error> {
+    fn get_speed(reader: &mut BufReader<&[u8]>, file_type: &Type) -> Result<u32, std::io::Error> {
         let speed = reader.read_u32::<BigEndian>()?;
-        match (header, speed) {
+        match (file_type, speed) {
             (Type::RSID, 0x00000000) => Ok(speed),
             (Type::PSID, _) => Ok(speed),
             _ => Err(std::io::Error::new(
