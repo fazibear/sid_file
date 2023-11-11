@@ -1,73 +1,68 @@
 use std::io::prelude::*;
 use std::io::BufReader;
-use std::str;
 use byteorder::{LittleEndian, BigEndian, ReadBytesExt};
 
 type Byte = u8;
 type Word = u16;
 type LongWord = u32;
 
-#[derive(Debug)]
-pub enum SidFileType {
+#[derive(Debug, Copy, Clone)]
+pub enum Type {
     RSID,
     PSID,
     Unknown,
 }
 
-#[derive(Debug)]
-pub enum SidFileVersion {
+#[derive(Debug, Copy, Clone)]
+pub enum Version {
     V1,
     V2,
     V3,
     V4,
 }
 
-#[derive(Debug)]
-pub struct SidFileHeader {
-}
-
-#[derive(Debug)]
-pub enum SidFileFormat {
+#[derive(Debug, Copy, Clone)]
+pub enum Format {
     InternalPlayer,
     MusData,
 }
 
-#[derive(Debug)]
-pub enum SidFilePlaySID {
+#[derive(Debug, Copy, Clone)]
+pub enum PlaySID {
     C64,
     PlaySID,
 }
 
-#[derive(Debug)]
-pub enum SidFileFlagClock {
+#[derive(Debug, Copy, Clone)]
+pub enum Clock {
     Unknown,
     PAL,
     NTSC,
     Both,
 }
 
-#[derive(Debug)]
-pub enum SidFileFlagSidModel {
+#[derive(Debug, Copy, Clone)]
+pub enum ChipModel {
     Unknown,
     MOS6581,
     MOS8580,
     Both,
 }
 
-#[derive(Debug)]
-pub struct SidFileFlags {
-    pub format: SidFileFormat,
-    pub play_sid: SidFilePlaySID,
-    pub clock: SidFileFlagClock,
-    pub sid_model: SidFileFlagSidModel,
-    pub second_sid_model: SidFileFlagSidModel,
-    pub third_sid_model: SidFileFlagSidModel,
+#[derive(Debug, Copy, Clone)]
+pub struct Flags {
+    pub format: Format,
+    pub play_sid: PlaySID,
+    pub clock: Clock,
+    pub sid_model: ChipModel,
+    pub second_sid_model: ChipModel,
+    pub third_sid_model: ChipModel,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SidFile {
-    pub file_type: SidFileType,
-    pub version: SidFileVersion,
+    pub file_type: Type,
+    pub version: Version,
     pub data_offset: Word,  // +06    Word dataOffset
     pub load_address: Word, // +08    Word loadAddress
     pub init_address: Word, // +0A    Word initAddress
@@ -78,7 +73,7 @@ pub struct SidFile {
     pub name: String,       // +16    String name
     pub author: String,     // +36    String author
     pub released: String,   // +56    String released
-    pub flags: Option<SidFileFlags>,      // +76    Word flags
+    pub flags: Option<Flags>,      // +76    Word flags
     pub start_page: Option<Byte>,         // +78    Byte start_page
     pub page_length: Option<Byte>,        // +79    Byte page_length
     pub second_sid_address: Option<Byte>, // +7A    Byte second_SID_address
@@ -105,7 +100,7 @@ impl SidFile {
         let released = Self::get_released(&mut reader)?;
 
         match version {
-            SidFileVersion::V1 => {
+            Version::V1 => {
                 let real_load_address = Self::get_real_load_address(&mut reader)?;
                 let data = Self::get_data(&mut reader)?;
 
@@ -167,11 +162,11 @@ impl SidFile {
         }
     }
 
-    fn get_file_type(reader: &mut BufReader<&[u8]>) -> Result<SidFileType, std::io::Error> {
+    fn get_file_type(reader: &mut BufReader<&[u8]>) -> Result<Type, std::io::Error> {
         let file_type = reader.read_u32::<BigEndian>()?;
         match file_type {
-            0x52534944 => Ok(SidFileType::RSID),
-            0x50534944 => Ok(SidFileType::PSID),
+            0x52534944 => Ok(Type::RSID),
+            0x50534944 => Ok(Type::PSID),
             _ => Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
                 "Invalid file_type",
@@ -181,14 +176,14 @@ impl SidFile {
 
     fn get_version(
         reader: &mut BufReader<&[u8]>,
-        header: &SidFileType,
-    ) -> Result<SidFileVersion, std::io::Error> {
+        header: &Type,
+    ) -> Result<Version, std::io::Error> {
         let version = reader.read_u16::<BigEndian>()?;
         match (header, version) {
-            (_, 0x01) => Ok(SidFileVersion::V1),
-            (SidFileType::PSID | SidFileType::RSID, 0x02) => Ok(SidFileVersion::V2),
-            (SidFileType::PSID | SidFileType::RSID, 0x03) => Ok(SidFileVersion::V3),
-            (SidFileType::PSID | SidFileType::RSID, 0x04) => Ok(SidFileVersion::V4),
+            (_, 0x01) => Ok(Version::V1),
+            (Type::PSID | Type::RSID, 0x02) => Ok(Version::V2),
+            (Type::PSID | Type::RSID, 0x03) => Ok(Version::V3),
+            (Type::PSID | Type::RSID, 0x04) => Ok(Version::V4),
             _ => Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
                 "Invalid version",
@@ -198,15 +193,15 @@ impl SidFile {
 
     fn get_data_offset(
         reader: &mut BufReader<&[u8]>,
-        version: &SidFileVersion,
+        version: &Version,
     ) -> Result<u16, std::io::Error> {
         let data_offset = reader.read_u16::<BigEndian>()?;
 
         match (version, data_offset) {
-            (SidFileVersion::V1, 0x76) => Ok(0x76),
-            (SidFileVersion::V2, 0x7C) => Ok(0x7C),
-            (SidFileVersion::V3, 0x7C) => Ok(0x7C),
-            (SidFileVersion::V4, 0x7C) => Ok(0x7C),
+            (Version::V1, 0x76) => Ok(0x76),
+            (Version::V2, 0x7C) => Ok(0x7C),
+            (Version::V3, 0x7C) => Ok(0x7C),
+            (Version::V4, 0x7C) => Ok(0x7C),
             _ => Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
                 "Invalid data offset",
@@ -216,15 +211,13 @@ impl SidFile {
 
     fn get_load_address(
         reader: &mut BufReader<&[u8]>,
-        header: &SidFileType,
+        header: &Type,
     ) -> Result<u16, std::io::Error> {
         let load_address = reader.read_u16::<BigEndian>()?;
-        
-        return Ok(load_address);
 
         match (header, load_address) {
-            (SidFileType::PSID, _) => Ok(load_address),
-            (SidFileType::RSID, 0x07E8..=0xFFFF) => Ok(load_address),
+            (Type::PSID, _) => Ok(load_address),
+            (Type::RSID, 0xE807..=0xFFFF) => Ok(load_address),
             _ => Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
                 "Invalid load address",
@@ -243,13 +236,13 @@ impl SidFile {
 
     fn get_play_address(
         reader: &mut BufReader<&[u8]>,
-        header: &SidFileType,
+        header: &Type,
     ) -> Result<u16, std::io::Error> {
         let play_address = reader.read_u16::<BigEndian>()?;
 
         match (header, play_address) {
-            (SidFileType::RSID, 0x0000) => Ok(play_address),
-            (SidFileType::PSID, 0x0000..=0xFFFF) => Ok(play_address),
+            (Type::RSID, 0x0000) => Ok(play_address),
+            (Type::PSID, 0x0000..=0xFFFF) => Ok(play_address),
             _ => Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
                 "Invalid play address",
@@ -259,14 +252,14 @@ impl SidFile {
 
     fn get_init_address(
         reader: &mut BufReader<&[u8]>,
-        header: &SidFileType,
+        header: &Type,
     ) -> Result<u16, std::io::Error> {
         let init_address = reader.read_u16::<BigEndian>()?;
 
         match (header, init_address) {
-            (SidFileType::RSID, 0x07E8..=0x9FFF) => Ok(init_address),
-            (SidFileType::RSID, 0xC000..=0xCFFF) => Ok(init_address),
-            (SidFileType::PSID, 0x0000..=0xFFFF) => Ok(init_address),
+            (Type::RSID, 0x07E8..=0x9FFF) => Ok(init_address),
+            (Type::RSID, 0xC000..=0xCFFF) => Ok(init_address),
+            (Type::PSID, 0x0000..=0xFFFF) => Ok(init_address),
             _ => Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
                 "Invalid init address",
@@ -299,12 +292,12 @@ impl SidFile {
 
     fn get_speed(
         reader: &mut BufReader<&[u8]>,
-        header: &SidFileType,
+        header: &Type,
     ) -> Result<u32, std::io::Error> {
         let speed = reader.read_u32::<BigEndian>()?;
         match (header, speed) {
-            (SidFileType::RSID, 0x00000000) => Ok(speed),
-            (SidFileType::PSID, _) => Ok(speed),
+            (Type::RSID, 0x00000000) => Ok(speed),
+            (Type::PSID, _) => Ok(speed),
             _ => Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
                 "Invalid speed",
@@ -345,27 +338,27 @@ impl SidFile {
         Ok(str)
     }
 
-    fn get_flags(reader: &mut BufReader<&[u8]>) -> Result<SidFileFlags, std::io::Error> {
+    fn get_flags(reader: &mut BufReader<&[u8]>) -> Result<Flags, std::io::Error> {
         let flags = reader.read_u16::<BigEndian>()?;
         let mut bits: Vec<bool> = vec![false];
         for n in 0..16 {
             bits.push(((flags >> n) & 1) == 1);
         }
         let format = match bits[0] {
-            false => SidFileFormat::InternalPlayer,
-            true => SidFileFormat::MusData,
+            false => Format::InternalPlayer,
+            true => Format::MusData,
         };
 
         let play_sid = match bits[1] {
-            false => SidFilePlaySID::C64,
-            true => SidFilePlaySID::PlaySID,
+            false => PlaySID::C64,
+            true => PlaySID::PlaySID,
         };
 
         let clock = match (bits[2], bits[3]) {
-            (false, false) => SidFileFlagClock::Unknown,
-            (false, true) => SidFileFlagClock::PAL,
-            (true, false) => SidFileFlagClock::NTSC,
-            (true, true) => SidFileFlagClock::Both,
+            (false, false) => Clock::Unknown,
+            (false, true) => Clock::PAL,
+            (true, false) => Clock::NTSC,
+            (true, true) => Clock::Both,
         };
 
         let sid_model = Self::get_sid_model(bits[4], bits[5]);
@@ -379,7 +372,7 @@ impl SidFile {
             ));
         };
 
-        Ok(SidFileFlags {
+        Ok(Flags {
             format,
             play_sid,
             clock,
@@ -389,12 +382,12 @@ impl SidFile {
         })
     }
 
-    fn get_sid_model(bit0: bool, bit1: bool) -> SidFileFlagSidModel {
+    fn get_sid_model(bit0: bool, bit1: bool) -> ChipModel {
         match (bit0, bit1) {
-            (false, false) => SidFileFlagSidModel::Unknown,
-            (false, true) => SidFileFlagSidModel::MOS6581,
-            (true, false) => SidFileFlagSidModel::MOS8580,
-            (true, true) => SidFileFlagSidModel::Both,
+            (false, false) => ChipModel::Unknown,
+            (false, true) => ChipModel::MOS6581,
+            (true, false) => ChipModel::MOS8580,
+            (true, true) => ChipModel::Both,
         }
     }
 
