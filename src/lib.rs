@@ -219,6 +219,8 @@ impl SidFile {
         header: &SidFileType,
     ) -> Result<u16, std::io::Error> {
         let load_address = reader.read_u16::<BigEndian>()?;
+        
+        return Ok(load_address);
 
         match (header, load_address) {
             (SidFileType::PSID, _) => Ok(load_address),
@@ -313,31 +315,34 @@ impl SidFile {
     fn get_name(reader: &mut BufReader<&[u8]>) -> Result<String, std::io::Error> {
         let mut name = [0u8; 32];
         reader.read_exact(&mut name)?;
-        Ok(str::from_utf8(&name)
-            .unwrap()
+        let str = String::from_utf8_lossy(&name)
             .to_string()
             .trim_matches(char::from(0))
-            .to_string())
+            .to_string();
+
+        Ok(str)
     }
 
     fn get_author(reader: &mut BufReader<&[u8]>) -> Result<String, std::io::Error> {
         let mut author = [0u8; 32];
         reader.read_exact(&mut author)?;
-        Ok(str::from_utf8(&author)
-            .unwrap()
+        let str = String::from_utf8_lossy(&author)
             .to_string()
             .trim_matches(char::from(0))
-            .to_string())
+            .to_string();
+
+        Ok(str)
     }
 
     fn get_released(reader: &mut BufReader<&[u8]>) -> Result<String, std::io::Error> {
         let mut released = [0u8; 32];
         reader.read_exact(&mut released)?;
-        Ok(str::from_utf8(&released)
-            .unwrap()
+        let str = String::from_utf8_lossy(&released)
             .to_string()
             .trim_matches(char::from(0))
-            .to_string())
+            .to_string();
+
+        Ok(str)
     }
 
     fn get_flags(reader: &mut BufReader<&[u8]>) -> Result<SidFileFlags, std::io::Error> {
@@ -395,24 +400,12 @@ impl SidFile {
 
     fn get_start_page(reader: &mut BufReader<&[u8]>) -> Result<u8, std::io::Error> {
         let start_page = reader.read_u8()?;
-        match start_page {
-            0x00..=0x3F => Ok(start_page),
-            _ => Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "Invalid start page",
-            )),
-        }
+        Ok(start_page)
     }
 
     fn get_page_length(reader: &mut BufReader<&[u8]>) -> Result<u8, std::io::Error> {
         let page_length = reader.read_u8()?;
-        match page_length {
-            0x00..=0x3F => Ok(page_length),
-            _ => Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "Invalid page length",
-            )),
-        }
+        Ok(page_length)
     }
 
     fn get_sid_address(reader: &mut BufReader<&[u8]>) -> Result<u8, std::io::Error> {
