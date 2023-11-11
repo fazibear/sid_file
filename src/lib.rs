@@ -1,6 +1,6 @@
+use byteorder::{BigEndian, LittleEndian, ReadBytesExt};
 use std::io::prelude::*;
 use std::io::BufReader;
-use byteorder::{LittleEndian, BigEndian, ReadBytesExt};
 
 type Byte = u8;
 type Word = u16;
@@ -63,17 +63,17 @@ pub struct Flags {
 pub struct SidFile {
     pub file_type: Type,
     pub version: Version,
-    pub data_offset: Word,  // +06    Word dataOffset
-    pub load_address: Word, // +08    Word loadAddress
-    pub init_address: Word, // +0A    Word initAddress
-    pub play_address: Word, // +0C    Word playAddress
-    pub songs: Word,        // +0E    Word songs
-    pub start_song: Word,   // +10    Word startSong
-    pub speed: LongWord,    // +12    LongWord speed
-    pub name: String,       // +16    String name
-    pub author: String,     // +36    String author
-    pub released: String,   // +56    String released
-    pub flags: Option<Flags>,      // +76    Word flags
+    pub data_offset: Word,                // +06    Word dataOffset
+    pub load_address: Word,               // +08    Word loadAddress
+    pub init_address: Word,               // +0A    Word initAddress
+    pub play_address: Word,               // +0C    Word playAddress
+    pub songs: Word,                      // +0E    Word songs
+    pub start_song: Word,                 // +10    Word startSong
+    pub speed: LongWord,                  // +12    LongWord speed
+    pub name: String,                     // +16    String name
+    pub author: String,                   // +36    String author
+    pub released: String,                 // +56    String released
+    pub flags: Option<Flags>,             // +76    Word flags
     pub start_page: Option<Byte>,         // +78    Byte start_page
     pub page_length: Option<Byte>,        // +79    Byte page_length
     pub second_sid_address: Option<Byte>, // +7A    Byte second_SID_address
@@ -133,10 +133,10 @@ impl SidFile {
                 let page_length = Self::get_page_length(&mut reader)?;
                 let second_sid_address = Self::get_sid_address(&mut reader)?;
                 let third_sid_address = Self::get_sid_address(&mut reader)?;
-                
+
                 let real_load_address = Self::get_real_load_address(&mut reader)?;
                 let data = Self::get_data(&mut reader)?;
-                
+
                 Ok(Self {
                     file_type,
                     version,
@@ -226,13 +226,10 @@ impl SidFile {
     }
 
     // but why?
-    fn get_real_load_address(
-        reader: &mut BufReader<&[u8]>
-    ) -> Result<u16, std::io::Error> {
+    fn get_real_load_address(reader: &mut BufReader<&[u8]>) -> Result<u16, std::io::Error> {
         let load_address: u16 = reader.read_u16::<LittleEndian>()?;
         Ok(load_address)
     }
-
 
     fn get_play_address(
         reader: &mut BufReader<&[u8]>,
@@ -290,10 +287,7 @@ impl SidFile {
         }
     }
 
-    fn get_speed(
-        reader: &mut BufReader<&[u8]>,
-        header: &Type,
-    ) -> Result<u32, std::io::Error> {
+    fn get_speed(reader: &mut BufReader<&[u8]>, header: &Type) -> Result<u32, std::io::Error> {
         let speed = reader.read_u32::<BigEndian>()?;
         match (header, speed) {
             (Type::RSID, 0x00000000) => Ok(speed),
